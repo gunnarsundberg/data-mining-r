@@ -1,0 +1,248 @@
+---
+title: "Homework Assignment 4"
+subtitle: "Clustering and Outlier Detection"
+author: "Gunnar Sundberg - gsundberg3513@floridapoly.edu"
+output: html_notebook
+---
+
+
+Run the code below to lad the `tidyverse` package for data transformation and visualization, the `dbscan` package for clustering and outlier detection, and the `factoextra` package for quick visualizations of models (you are not required to use `factoextra` and can choose to use other methods for creating visualizations that explain your results when requested)
+
+```{r, message = FALSE, warning=FALSE}
+library(tidyverse)
+library(dbscan)
+library(factoextra)
+library(caret)
+library(patchwork)
+```
+
+
+# Problem 1 
+
+Read the dataset on corporate data for 22 public utilities in the United States.
+
+```{r, message=FALSE}
+utilities <- read_csv("https://github.com/reisanar/datasets/raw/master/Utilities.csv")
+```
+
+Sample entries:
+
+```{r}
+head(utilities)
+```
+
+
+ Variables    |  Description
+------------  |----------------------------------------------------------------
+`Company`        | Company name
+`Fixed_charge` | Fixed-charge coverage ratio (income/debt)
+`RoR    `  | Percent rate of return on capital
+`Cost    `      | Cost per KW capacity in place
+`Load_factor    `        | Annual load factor
+`Demand_growth    `| Percent demand growth
+`Sales    `  | Sales (KWH use per year)
+`Nuclear    `      | Nuclear    			Percent nuclear
+`Fuel_Cost`        | Fuel_Cost			Total fuel costs (cents per KWH)
+
+(a) Considering the numerical attributes available, give an example where clustering analysis using this dataset would be useful for decision making or validation.
+
+(b) Create any data summary of the different attributes (or a subset of them). 
+
+(c) Use hierarchical clustering using the numerical attributes (you can for example use single linkage here, i.e. `method = "single"` when using the `hclust()` function). Use the results from part (b) to decide if any pre-processing or data transformation is appropriate. Comment on your clustering results (for example, are there specific attributes that characterize the different groups)
+
+(d) Create a dendrogram representing the clustering found in part (c). Comment on your results.
+
+
+
+## Solutions
+
+(a) 
+Considering the interest in making changes to methods of energy production in the United States, a clustering analysis that shows a clear separation between utilities with higher percent nuclear and lower percent nuclear would be very useful for decision-making.
+
+(b)
+We will create a summary for all numeric variables:
+
+```{r}
+my_utilities <- utilities %>%
+                select(!Company)
+
+summary(my_utilities)
+```
+
+(c)
+Based on the variation in scale shown in part (b), we will normalize our data before performing clustering:
+
+```{r}
+# calculate the pre-process parameters from the dataset
+preprocessParams_norm <- preProcess(my_utilities, method = c("range"))
+# transform the dataset using the parameters
+utilities_norm <- predict(preprocessParams_norm, my_utilities)
+# summarize the transformed dataset
+summary(utilities_norm)
+```
+
+Now that our data has been normalized, we will examine hierarchical clustering with different types of linkage:
+
+```{r}
+hclusts <- 
+  tibble( # define the methods to try
+    method = c("average", 
+               "single", 
+               "complete"))%>% 
+  mutate( # map method to hcut() 
+    myhclust = map(method, 
+                   ~factoextra::hcut(
+                     utilities_norm,
+                     hc_method = .x, 
+                     hc_func = "hclust",
+                     k = 3 ))
+         )
+
+p1 <- factoextra::fviz_dend(
+  hclusts$myhclust[[1]], 
+  rect = TRUE)+ 
+  labs(title = paste0("Using ", 
+                      hclusts$method[1], 
+                      " linkage"))
+
+p2 <- factoextra::fviz_dend(
+  hclusts$myhclust[[2]], 
+  rect = TRUE)+ 
+  labs(title = paste0("Using ", 
+                      hclusts$method[2], 
+                      " linkage"))
+
+p3 <- factoextra::fviz_dend(
+  hclusts$myhclust[[3]], 
+  rect = TRUE)+ 
+  labs(title = paste0("Using ", 
+                      hclusts$method[3], 
+                      " linkage"))
+
+(p1 + p2 + p3) + 
+  plot_layout(nrow = 1, widths = c(0.31, 0.31, 0.31))
+```
+
+We now examine the results of performing hierarchical clustering using multiple values of $k$ with average linkage:
+
+```{r}
+#fviz_nbclust(my_utilities, hclust(method = "single"), method = "wss")
+
+hclusts <- 
+  tibble( # define number of groups to test
+    clusters = 2:4) %>% 
+    mutate( # map method to hcut() 
+      myhclust = map(clusters, 
+                     ~factoextra::hcut(
+                        utilities_norm,
+                        hc_method = "average", 
+                        hc_func = "hclust",
+                        k = .x ))
+    )
+
+q1 <- factoextra::fviz_dend(
+  hclusts$myhclust[[1]], 
+  rect = TRUE)+ 
+  labs(title = paste0("Creating ", 
+                      hclusts$clusters[1], 
+                      " groups"))
+q2 <- factoextra::fviz_dend(
+  hclusts$myhclust[[2]], 
+  rect = TRUE)+ 
+  labs(title = paste0("Creating ", 
+                      hclusts$clusters[2], 
+                      " groups"))
+q3 <- factoextra::fviz_dend(
+  hclusts$myhclust[[3]], 
+  rect = TRUE)+ 
+  labs(title = paste0("Creating ", 
+                      hclusts$clusters[3], 
+                      " groups"))
+(q1 + q2 + q3) + 
+  plot_layout(nrow = 1, widths = c(0.31, 0.31, 0.31, 0.31))
+```
+
+Based on the visualizations, we settle on $k=3$. We now perform hierarchical clustering:
+
+```{r}
+utilities_hcut <- hcut(utilities_norm, k = 3, 
+                 hc_method = "average", 
+                 hc_func = "hclust")
+
+utilities_hcut
+```
+
+Using the clusters we made, we now analyze the mean values for each feature, grouped by cluster, to get an idea of the feature values for each cluster:
+
+```{r}
+my_utilities %>%
+  mutate(cluster = utilities_hcut$cluster) %>%
+  group_by(cluster) %>%
+  summarise(mean_Fixed_charge = mean(Fixed_charge), mean_RoR = mean(RoR), mean_Cost = mean(Cost), mean_Load_factor = mean(Load_factor), mean_Demand_growth = mean(Demand_growth), mean_Sales = mean(Sales), mean_Nuclear = mean(Nuclear), mean_Fuel_Cost = mean(Fuel_Cost))
+```
+
+The clusters show a clear separation in the percent nuclear, fuel cost, and sales, with some variations in other features as well. This result is especially interesting after the example given in part (a).
+
+(d)
+
+```{r}
+fviz_dend(utilities_hcut, rect = TRUE)
+```
+
+
+# Problem 2 
+
+
+Read the dataset:
+
+```{r, message=FALSE}
+spiral <- read_csv("https://github.com/reisanar/datasets/raw/master/spiral.csv")
+# select only the first two columns
+my_spiral <- select(spiral, 1:2)
+```
+
+Below is a plot of the dataset:
+
+```{r}
+ggplot(data = my_spiral) + 
+  geom_point(aes(x = X, y = Y))
+```
+
+(a) Use any clustering method discussed in class to find 3 groups for this dataset. 
+
+(b) Comment on your results from part (a)
+
+(b) Visualize the dataset again including the cluster assignments.
+
+
+## Solutions
+
+(a)
+```{r}
+spiral_dbscan <- dbscan(my_spiral, eps = 2.5, minPts = 5)
+spiral_dbscan
+```
+
+(b)
+I chose to use DBSCAN because there appear to be three separate groups in the data, but the points in the clusters are not similar in terms of Euclidean distance. Minimizing the within-cluster variation (K-means using Euclidean distance) would not make much sense in this situation. Using hierarchical clustering would lead to some of the same issues. DBSCAN is a great fit for this situation because there are three oddly-shaped clusters of dense points, with the density being similar for all of the clusters.
+
+```{r}
+fviz_cluster(spiral_dbscan, my_spiral, 
+             geom = "point", ellipse = F) + 
+  theme_minimal()
+```
+
+As shown by the plot, DBSCAN was very effective for this data.
+
+# Problem 3
+
+Search for one research article where "outlier detection" (or "anomaly detection") has been used in a field/application of you interest. Share the name of the paper, a short description of the main results (check the abstract and conclusions of the paper), and a direct link to the work.
+
+You could use the university's library for this, or simply use [Google Scholar](https://scholar.google.com/scholar?hl=en&q=%22outlier+detection%22) for a list of the many papers that have used related techniques in recent years.
+
+
+
+## Solutions 
+
+
+In [Outlier Detection for High Dimensional Data](http://www.facweb.iitkgp.ac.in/~shamik/autumn2012/dwdm/papers/Outlier%20Detection%20for%20High%20Dimensional%20Data.pdf) Aggarwal establishes a technique for outlier detection in high-dimensional data where traditional distance techniques do not necessarily apply. Distance-based methods struggle with the sparsity of high-dimensional data. Aggarwal's method includes finding lower-dimensional projections which are locally sparse using an evolutionary search method that is nearly as effective as brute force, but at much lower cost. High-dimensional data has become of interest to me since encountering it many times in my research with Dr. Karaman. The author's name also caught my eye from our discussion on the Apriori algorithm, but it turned out to be a different author.

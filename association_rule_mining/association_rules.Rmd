@@ -1,0 +1,515 @@
+---
+title: "Homework Assignment 3"
+subtitle: "Association Rules"
+author: "Gunnar Sundberg - gsundberg3513@floridapoly.edu"
+output: html_notebook
+---
+
+
+Load the `tidyverse` package for data transformation and visualization, and the `arules` and `arulesViz` for association rules mining.
+
+```{r, message = FALSE, warning=FALSE}
+library(tidyverse)
+library(arules)
+library(arulesViz)
+```
+
+
+# Problem 1 
+
+## Example 1
+
+In this example we will define the **transaction** from a _list_ object:
+
+```{r}
+# define lists
+shopping_list <- list(
+  c("flowers", "card", "soda"),
+  c("toy", "flowers", "balloons", "candy"),
+  c("card", "candy", "flowers"),
+  c("toy", "balloons", "soda"),
+  c("flowers", "card", "soda")
+)
+  
+  
+```
+
+We now change the class of the list into a _transactions_ class object (the `transactions` class represents transaction data used for mining itemsets or rules):
+
+```{r}
+# coerce as transaction
+shopping_tr <- as(shopping_list, "transactions")
+```
+
+The apriori algorithm is used below to generate rules from our shopping list:
+
+```{r}
+# uses the apriori() function
+shopping_rules <- apriori(shopping_tr,
+                          parameter = list(support = 0.1,
+                                           confidence = 0.25,
+                                           minlen = 2))
+  
+```
+
+We use the `inspect()` function to check the top 3 rules based on _confidence_
+
+
+```{r}
+# inspect by confidence
+inspect(head(sort(shopping_rules, by = "confidence"), 3))
+```
+
+```{r}
+shopping_rules %>%
+  sort( . , by = "confidence") %>%
+  head(3) %>%
+  inspect()
+```
+
+```{r}
+image(shopping_tr)
+```
+
+
+## Example 2
+
+In this example we create transactions from a data frame:
+
+
+```{r}
+## creating transactions from data.frame
+students_df <- data.frame(
+  age = factor(c(6, 8, NA, 9, 16)),
+  grade = factor(c("A", "C", "F", NA, "C")),
+  pass = c(TRUE, TRUE, FALSE, TRUE, TRUE)
+)
+```
+
+Again, we _coerce_ the data frame as a `transactions` object:
+
+```{r}
+## coerce
+students_tr <- as(students_df, "transactions")
+```
+
+We can inspect this new object:
+
+```{r}
+# inspect
+inspect(students_tr)
+```
+
+Below the apriori algorithm is used with its default values:
+
+
+```{r}
+students_rules <- apriori(students_tr)
+```
+
+Let us inspect the generated rules this time based on the top 6 rules by _lift_:
+
+```{r}
+students_rules %>%
+  sort( . , by = "lift") %>%
+  head(6) %>%
+  inspect()
+```
+
+
+## Example 3
+
+First, let us create transactions from a list:
+
+```{r}
+publix <- list(
+  c("milk", "tea", "cake"),
+  c("eggs", "tea", "cold drink"),
+  c("milk", "eggs", "tea", "cold drink"),
+  c("eggs", "cold drink"),
+  c("juice")
+)
+```
+
+Convert list to transactions class:
+
+```{r}
+publix_tr <- as(publix, "transactions")
+```
+
+An item frequency plot can be created using the `itemFrequencyPlot()` function:
+
+```{r}
+itemFrequencyPlot(publix_tr)
+
+```
+
+
+Use apriori algorithm with support set to 0.4:
+
+```{r}
+publix_rules <- apriori(publix_tr,
+                        parameter = list(support = 0.4))
+
+```
+
+
+
+Inspect the rules:
+
+```{r}
+inspect(publix_rules)
+```
+
+Let us visualize these rules using tools from the `arulesViz` package.
+
+
+
+```{r, message=FALSE, warning=FALSE}
+plot(publix_rules, method = "graph", control = list(type = "items"),
+     engine = "htmlwidget")
+```
+
+
+
+# Problem 2 
+
+## Example: groceries data 
+
+Michael Hahsler has authored and maintains two very useful R packages relating to association rule mining: the `arules` package and the `arulesViz` package.
+
+The example uses the `Groceries` dataset from the R `arules` package. The `Groceries` dataset is collected from 30 days of real-world point-of-sale transactions of a grocery store. 
+
+The data contain 9835 transactions, or about 328 transactions per day. If we remove brands and just consider product type, it will give total 169 items. 
+
+- Any guesses about which types of items might be purchased together? 
+
+- Will wine and cheese be a common pairing? Bread and butter? Milk and eggs? 
+
+```{r}
+data(Groceries)
+Groceries
+```
+
+Let us find the items most commonly found in transactional data
+
+```{r}
+summary(Groceries)
+```
+
+
+**Some things to notice**
+
+- Density, 0.026 means 2.6% are non zero matrix cells
+
+- Matrix has 9835 times 169, i.e. 1662115 cells. Hence 9835 times 169 times 0.02609146, i.e. 43367, items were purchased
+
+- Whole milk appeared 2513 times out of 9835 transactions, means 0.26 percent of transactions.
+
+- Average transaction contained 43367/9835 = 4.409456 items
+
+- A total of 2159 transactions contained only a single item, while one transaction had 32 items.
+
+- The first quartile and median purchase size are 2 and 3 items respectively, implying that 25 percent of transactions contained two or fewer items and about half contained around three items.
+
+- The mean of 4.409 matches the value we calculated manually.
+
+
+
+## Generating rules
+
+```{r}
+grocery_rules <- apriori(Groceries,
+                         parameter = list(support = 0.01, confidence = 0.5))
+```
+
+
+The apriori algorithm generated 15 rules with the given constraints. Let us discuss the `Parameter Specification` section of the output.
+
+
+- `minval` is the minimum value of the support an itemset should satisfy to be a part of a rule.
+
+- `smax` is the maximum support value for an itemset.
+
+- `arem` is an Additional Rule Evaluation Parameter. In the above code we have constrained the number of rules using Support and Confidence. There are several other ways to constrain the rules using the `arem` parameter in the function.
+
+- `aval` is a logical indicating whether to return the additional rule evaluation measure selected with `arem`.
+
+- `originalSupport` is the traditional support value only considers both `LHS` and `RHS` items for calculating support. If you want to use only the `LHS` items for the calculation then you need to set this to `FALSE`.
+
+- `maxtime` is the maximum amount of time allowed to check for subsets (in seconds).
+
+- `minlen` is the minimum number of items required in the rule. The default value for `minlen` is 1. This means that rules with only one item (i.e., an empty antecedent/LHS) like `{} => {beer}` will be created. These rules mean that no matter what other items are involved, the item in the `RHS` will appear with the probability given by the rule's confidence (which equals the support). If you want to avoid these rules then use the argument `parameter=list(minlen=2)`.
+
+- `maxlen` is the maximum number of items that can be present in the rule.
+
+The top 3 rules sorted by confidence are shown below 
+
+```{r}
+grocery_rules %>%
+  sort( . , by = "confidence") %>%
+  head(3) %>%
+  inspect()
+```
+
+
+
+## Limiting the number of rules 
+
+In many cases, you would like to limit the number of rules generated. For example, you can use association rules as predictors in Regression/Classification. You can generate rules with the `RHS` of the rule as your response and use the rules generated as the modelling features. In this case, you would not want to use all the rules generated as the predictors because many rules are actually subsets of bigger rules and hence you would want to eliminate them. 
+
+Below we generate rules whose `RHS` is pre-defined:
+
+```{r}
+wholemilk_rules <- apriori(
+  data = Groceries,
+  parameter = list(support = 0.001, confidence = 0.8),
+  appearance = list(rhs = "whole milk")
+)
+```
+
+
+Check the top 5 rules generated in this case:
+
+```{r}
+wholemilk_rules %>%
+  sort( . , by = "lift") %>%
+  head(5) %>%
+  inspect()
+```
+
+
+
+If you want to get stronger rules, you have to increase the `confidence`. If you want lengthier rules increase the `maxlen` parameter. 
+
+
+
+
+## From Data Frame to Transactional Data 
+
+The `AdultUCI` dataset bundled with `arules` package is used below as illustration.
+
+```{r}
+data("AdultUCI")
+class(AdultUCI)
+```
+
+Notice that some of the columns are numeric:
+
+```{r}
+head(AdultUCI)
+```
+
+
+Each transaction of a _transactional dataset_ contains the list of items involved in that transaction. When we convert the dataframe into a transactional dataset, each row of this dataframe will become a transaction. Each column will become an item. But if the value of a column is numeric, it cannot be used as the column can take infinite values. So before converting the dataframe into a transactional dataset, we must ensure that we convert each column into a **factor** or a logical to ensure that the column takes values only from a fixed set.
+
+```{r}
+adult_factor <- map_df(AdultUCI, as.factor)
+```
+
+```{r}
+adult_factor
+```
+
+
+Now we convert the `adult_factor` dataframe into a transactional dataset 
+
+```{r}
+adult_tr <- as(adult_factor, "transactions")
+```
+
+Let us inspect this transactional dataset
+
+```{r}
+itemFrequencyPlot(adult_tr, topN = 10)
+```
+
+
+and finally we create some rules from this dataset:
+
+```{r}
+adult_rules <- apriori(adult_tr,
+                       parameter = list(support = 0.001, minlen = 2),
+                       appearance = list(rhs = "income=small"))
+```
+
+The top 4 rules organized by lift are shown below:
+
+```{r}
+adult_rules %>%
+  sort( . , by = "lift") %>%
+  head(4) %>%
+  inspect
+```
+
+
+# Problem 3
+
+This problem explores association rules mining for music recommendation using the `last.fm` data:
+
+```{r}
+# notice we are using read.csv() here
+lastfm <- read.csv("https://raw.githubusercontent.com/reisanar/datasets/master/lastfm.csv")
+```
+
+- Make all variables in the dataframe above an attribute of classs `factor` (categorical variable):
+
+```{r}
+lastfm <- map_df(lastfm, as.factor)
+```
+
+```{r}
+# coerce it as a dataframe (instead of a tibble)
+lastfm <- as.data.frame(lastfm)
+```
+
+
+- Here's a random sample of the rows in the data frame:
+
+```{r}
+set.seed(217)
+sample_n(lastfm, size = 7)
+```
+
+The variable `country` refers to the location of the `user`.
+
+
+
+(a) Find the top 10 most popular artists based on their appearance in the data set (regardless of the country). **HINT:** use tools from the `dplyr` (part of the `tidyverse`) to group by `artist`, count their appearances (for example using `count()`) and then display the top 10.
+
+
+```{r}
+lastfm %>%
+  group_by(artist) %>%
+  count(sort = TRUE) %>%
+  top_n(10)
+```
+
+
+> Looks like the top 10 is completely dominated by rock bands, including my favorite band (Radiohead), in the top spot.
+
+(b) How would you find the number of different users in this dataset? (If you use the `summarise()` function, add the argument `.groups = "drop"` to avoid the warning message. Example `summarise(n = n(), .groups = "drop")` )
+
+
+```{r}
+lastfm %>%
+  distinct(user) %>%
+  count()
+```
+
+
+> Using `dplyr`, we are able to see that there are 15,000 users in the dataset.
+
+(c) How many different artists are in this dataset?
+
+
+```{r}
+lastfm %>%
+  distinct(artist) %>%
+  count()
+```
+
+
+> Using `dplyr`, we are able to see that there are 1,004 artists in the dataset.
+
+
+**Pre-processing**
+
+- Let us create a list of users where every element in the list contains all the artists a user listens to.
+
+- We split the data in the vector `x` into groups defined in vector `f` in _supermarket terminology_, think of users as shoppers and artists as items bought
+
+```{r}
+# this is a large list
+playlist <- base::split(x = lastfm[ , "artist"], f = lastfm$user)
+```
+
+- You can then see the artists included in the first two users (user ID 1 and 3)
+
+```{r}
+playlist[1:2]
+```
+
+- Since an artist may be mentioned by the same user more than once, it is important to remove artist duplicates:
+
+```{r}
+## remove artist duplicates
+playlist_clean <- map(playlist, unique)   
+```
+
+
+(d) Change the class of the `playlist_clean` object to a transactions class, and create an item frequency plot using `itemFrequencyPlot()` with the option `support = 0.08`
+
+
+```{r}
+# code here
+playlist_tr <- as(playlist_clean, "transactions")
+itemFrequencyPlot(playlist_tr, support = 0.08)
+```
+
+
+> Item frequency is what we would expect given our top 10 artists analysis earlier. It seems like Radiohead, Coldplay, and the Beatles are in a class of their own.
+
+
+(e) Use the apriori algorithm with `support = 0.01` and `confidence = 0.5`. Inspect the rules, and list the top 10 rules by lift.
+
+
+```{r}
+playlist_rules <- apriori(data = playlist_tr,
+                          parameter = list(support = 0.01, confidence = 0.5))
+
+# Top 10 rules by lift
+playlist_rules %>%
+  sort( . , by = "lift") %>%
+  head(10) %>%
+  inspect
+```
+
+
+> Fascinating results here. This looks a bit like recommendations if you were to go on an artist's page on Spotify. Not many surprises here, as the genres and time periods are closely related in the rules we came up with.
+
+
+(f) Use `apriori()` again to generate rules where RHS is `"death cab for cutie"` (copy this, so that you use the correct spelling). Use `support = 0.01` and `confidence = 0.2`. Inspect the top 6 rules (by confidence) and comment on your results. 
+
+
+```{r}
+cutie_rules <- apriori(playlist_tr,
+        parameter = list(support = 0.01, confidence = 0.2),
+        appearance = list(rhs = "death cab for cutie")) %>%
+        sort( . , by = "confidence")
+        
+cutie_rules %>%
+  head(6) %>%
+  inspect
+```
+
+
+> The Postal Service is a side project of Death Cab for Cutie's lead singer. It makes sense that listening to the Postal Service is an indication that you may listen to Death Cab for Cutie. I would've guessed the Shins and the Decemberists, but Radiohead with the Shins being an indication of Death Cab for Cutie is an interesting find.
+
+(g) Create a network visualization of the set of rules created for Death Cab For Cutie
+
+
+```{r}
+plot(cutie_rules, method = "graph", control = list(type = "items"),
+     engine = "htmlwidget")
+```
+
+
+> This network graph is very helpful in visualizing the rules.
+
+
+(h) Use `apriori()` again to generate rules where RHS is `"coldplay"` (copy this, so that you use the correct spelling). Use `support = 0.002` and `minlen = 3`. Inspect the top 6 rules (by lift) and comment on your results. 
+
+
+
+```{r}
+apriori(playlist_tr,
+        parameter = list(support = 0.002, minlen = 3),
+        appearance = list(rhs = "coldplay")) %>%
+        sort( . , by = "lift") %>%
+        head(6) %>%
+        inspect
+```
+
+
+> Looks like a fairly diverse set of people enjoy Coldplay. Although these are all bands that enjoyed their prime in the 90's and 2000's (just like Coldplay), the rock subgenres are fairly different. This was a great assignment.
